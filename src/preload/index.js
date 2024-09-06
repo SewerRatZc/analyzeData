@@ -5,13 +5,24 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
   startProcessing: async (filePath) => {
     try {
-      const { headers, results } = await ipcRenderer.invoke('start-processing', filePath);
-      return { headers, results };
+      const result = await ipcRenderer.invoke('start-processing', filePath);
+      if (!result || !result.headers || !result.results) {
+        throw new Error('解析文件时接收到空数据');
+      }
+      return result;
     } catch (error) {
       console.error('文件解析失败', error);
-
       throw error;
     }
+  },
+  onUpdateData: (callback) => {
+    ipcRenderer.on('update-data', (event, data) => {
+      if (!data || !data.headers || !data.results) {
+        console.error('Received undefined data');
+        return;
+      }
+      callback(data);
+    });
   }
 }
 

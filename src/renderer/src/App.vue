@@ -2,7 +2,7 @@
   <div id="app">
     <div>
       <h1>Analyze Data</h1>
-      <input type="file" @change="onFileSelected" accept=".txt">
+      <input type="file" @change="onFileSelected" accept=".txt" />
       <button @click="processFile">Process File</button>
     </div>
     <!-- ECharts 容器 -->
@@ -31,7 +31,8 @@ export default {
         'CH-13--D0'
       ],
       chartData: [], // 存储每个通道的0和1数据
-      filePath: null
+      filePath: null,
+      intervalId: null // 用于动态刷新
     };
   },
   methods: {
@@ -49,26 +50,36 @@ export default {
       }
       try {
         const { headers, results } = await window.api.startProcessing(this.filePath);
-        
-        // 更新 labels，确保纵坐标每个通道有0和1
         this.labels = headers;
-
         this.chartData = results;
-        this.drawChart();
+
+        // 开始动态更新
+        if (this.intervalId) {
+          clearInterval(this.intervalId); // 清除之前的定时器
+        }
+        let currentIndex = 0;
+        this.intervalId = setInterval(() => {
+          const sliceData = this.chartData.slice(currentIndex, currentIndex + 30); // 每次展示30个点
+          this.drawChart(sliceData);
+          currentIndex += 30;
+          if (currentIndex >= this.chartData.length) {
+            currentIndex = 0; // 循环展示
+          }
+        }, 1000);
       } catch (error) {
         console.error('解析文件时出错', error);
         alert('解析文件时出错');
       }
     },
-    drawChart() {
+    drawChart(sliceData) {
       const chart = echarts.init(this.$refs.echartsContainer);
-      const xData = this.chartData.map(item => item.timestamp); // 时间戳作为横坐标
+      const xData = sliceData.map(item => item.timestamp); // 时间戳作为横坐标
       const seriesData = this.labels.map(() => []);
 
-      this.chartData.forEach(item => {
+      sliceData.forEach(item => {
         item.values.forEach((value, index) => {
           if (index < this.labels.length) {
-            seriesData[index].push(value);
+            seriesData[index].push(value); // 保证只显示0或1的值
           }
         });
       });
@@ -76,26 +87,25 @@ export default {
       const that = this;
 
       chart.setOption({
-        backgroundColor: 'transparent', // 设置透明背景，确保与页面背景一致
-        tooltip: { 
+        backgroundColor: 'transparent',
+        tooltip: {
           trigger: 'axis',
           formatter: function (params) {
-            // 根据params显示原始数据
-            let tooltipText = params[0].axisValueLabel + '<br/>';
-            params.forEach(param => {
-              tooltipText += `${param.seriesName}: ${param.data % 2}<br/>`; // 显示 0 或 1
+            const tooltipLines = params.map(param => {
+              const value = param.value % 2; // 确保展示的是0或1
+              return `${param.marker} ${param.seriesName}: ${value}`;
             });
-            return tooltipText;
+            return params[0].axisValue + '<br />' + tooltipLines.join('<br />');
           }
         },
         legend: {
           type: 'scroll',
-          data: this.labels,  // 通过图例控制通道的显示和隐藏
+          data: this.labels,
           top: '5%'
         },
         xAxis: {
-          type: 'category',  // 使用 category 类型，保持时间戳原样
-          data: xData, // 时间戳数据
+          type: 'category',
+          data: xData,
           axisLabel: {
             rotate: 45,
             interval: 0,
@@ -105,8 +115,8 @@ export default {
         yAxis: {
           type: 'value',
           min: 0,
-          max: this.labels.length * 2, // 每个通道占用两个单位
-          interval: 2, // 每个通道间隔 2
+          max: this.labels.length * 2, // 每个通道的0和1在不同的位置显示
+          interval: 2,
           axisLabel: {
             formatter: function (value) {
               const labelIndex = Math.floor(value / 2);
@@ -127,8 +137,8 @@ export default {
         series: this.labels.map((label, index) => ({
           name: label,
           type: 'line',
-          step: 'end', // 设置为阶梯线图的样式
-          data: seriesData[index].map(value => value === 1 ? (index * 2 + 1) : index * 2), // 0 和 1 对应的y坐标区间
+          step: 'end',
+          data: seriesData[index].map(val => val + index * 2), // 通过index错开每个通道，且只保留0或1的数值
           showSymbol: false,
           lineStyle: {
             width: 2
@@ -143,7 +153,12 @@ export default {
     }
   },
   mounted() {
-    this.drawChart(); // 页面加载时绘制图表
+    this.drawChart([]); // 页面加载时绘制空图表
+  },
+  beforeUnmount() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
   }
 };
 </script>
@@ -151,7 +166,7 @@ export default {
 <style scoped>
 #app {
   text-align: center;
-  background-color: #FFC107; /* 设置页面的背景颜色 */
+  background-color: #FFC107; 
   color: white;
   padding: 20px;
   font-family: 'Arial', sans-serif;
@@ -163,6 +178,6 @@ export default {
   width: 100%;
   height: 85vh;
   margin: 0 auto;
-  background-color: transparent; /* 让背景色与页面一致 */
+  background-color: transparent;
 }
 </style>

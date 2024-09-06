@@ -42,28 +42,43 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('start-processing', async (event, filePath) => {
-    const headers = [];
-    const results = [];
-    const fileStream = fs.createReadStream(filePath);
-    const rl = readline.createInterface({
-      input: fileStream,
-      crlfDelay: Infinity
-    });
+    // console.log('Received file path: ', filePath);
 
-    let isFirstLine = true;
-    for await (const line of rl) {
-      const parts = line.split(',');
-      if (isFirstLine) {
-        headers.push(...parts.slice(1)); // 获取通道名称
-        isFirstLine = false;
-        continue;
+    try {
+      const headers = [];
+      const results = [];
+      const fileStream = fs.createReadStream(filePath);
+      const rl = readline.createInterface({
+        input: fileStream,
+        crlfDelay: Infinity
+      });
+
+      let isFirstLine = true;
+      for await (const line of rl) {
+        const parts = line.split(',');
+        console.log('Reading line: ', parts);
+        if (isFirstLine) {
+          headers.push(...parts.slice(1)); // 获取通道名称
+          console.log('Headers:', headers);
+          isFirstLine = false;
+          continue;
+        }
+        const timestamp = parseInt(parts[0], 10);
+        const values = parts.slice(1).map(v => parseInt(v, 10)); // 解析通道数值
+        results.push({ timestamp, values });
       }
-      const timestamp = parseInt(parts[0], 10);
-      const values = parts.slice(1).map(v => parseInt(v, 10)); // 解析通道数值
-      results.push({ timestamp, values });
-    }
 
-    return { headers, results };
+      if (headers.length === 0 || results.length === 0) {
+        throw new Error('解析文件时接收到空数据');
+      }
+
+      console.log('Final Headers:', headers);
+      console.log('Final Results:', results);
+      return { headers, results };
+    } catch (error) {
+      console.error('Error during file processing: ', error);
+      throw error;
+    }
   });
 
   createWindow();
