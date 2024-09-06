@@ -6,11 +6,11 @@
       <button @click="processFile">Process File</button>
     </div>
     <!-- ECharts 容器 -->
-    <div ref="echartsContainer" style="width: 100%; height: calc(100vh - 200px);"></div>
-
-    <!-- <div>
+    <div class="echarts-container" ref="echartsContainer"></div>
+    <!-- 展示当前标签长度 -->
+    <div>
       <p>Total Labels: {{ labels.length }}</p>
-    </div> -->
+    </div>
   </div>
 </template>
 
@@ -38,7 +38,7 @@ export default {
         'CH-13--D01',
         'CH-13--D00'
       ],
-      chartData: [], // 存储文件里解析出来的数据
+      chartData: [], // 用于存储解析的数据
       filePath: null
     };
   },
@@ -57,7 +57,10 @@ export default {
       }
       try {
         const { headers, results } = await window.api.startProcessing(this.filePath);
-        // this.labels = headers;
+        
+        // 合并文件中的 headers 和原始的 labels，确保解析文件后的 labels 保留完整
+        this.labels = this.labels.map(label => headers.includes(label) ? label : label);
+        
         this.chartData = results;
         this.drawChart();
       } catch (error) {
@@ -67,7 +70,7 @@ export default {
     },
     drawChart() {
       const chart = echarts.init(this.$refs.echartsContainer);
-      const xData = this.chartData.map(item => item.timestamp);
+      const xData = this.chartData.map(item => item.timestamp); // 保持时间戳原样不做转换
       const seriesData = this.labels.map(() => []);
 
       this.chartData.forEach(item => {
@@ -78,27 +81,36 @@ export default {
         });
       });
 
+      // 获取横坐标最小值和最大值
+      const xMin = Math.min(...xData);
+      const xMax = Math.max(...xData);
+
       chart.setOption({
+        backgroundColor: 'transparent', // 设置透明背景，移除多余的颜色层
         tooltip: { trigger: 'axis' },
         xAxis: { 
-          type: 'category', 
-          data: xData 
+          type: 'value',  // 使用 'value' 类型
+          min: xMin,  // 设置横坐标最小值为数据中的最小时间戳
+          max: xMax,  // 设置横坐标最大值为数据中的最大时间戳
+          axisLabel: {
+            rotate: 45  // 旋转标签以避免重叠
+          }
         },
         yAxis: { 
           type: 'category', 
-          data: this.labels, 
+          data: this.labels,
           axisLabel: {
-            fontSize: 12,  // 调整字体大小
-            interval: 0    // 确保每个标签都显示
+            fontSize: 12,
+            interval: 0
           },
-          splitLine: { show: false } // 关闭 y 轴的分隔线
+          splitLine: { show: false } // 关闭 y 轴分隔线
         },
         grid: {
-          left: '10%',   // 控制图表左边距
-          right: '10%', 
-          top: '10%',    
-          bottom: '10%', 
-          containLabel: true // 防止标签溢出容器
+          left: '5%',  // 减小左右边距以增加绘图区域宽度
+          right: '%',
+          top: '10%',  // 减少上边距，让图表向上扩展
+          bottom: '5%', // 减少下边距，让图表向下扩展
+          containLabel: true
         },
         series: this.labels.map((label, index) => ({
           name: label,
@@ -110,7 +122,7 @@ export default {
     }
   },
   mounted() {
-    this.drawChart(); // 页面加载时绘制图表
+    this.drawChart(); // 页面加载时绘制空图表
   }
 };
 </script>
@@ -118,9 +130,18 @@ export default {
 <style scoped>
 #app {
   text-align: center;
-  background-color: #FFC107;
+  background-color: #FFC107; /* 使用单一的背景色 */
   color: white;
   padding: 20px;
   font-family: 'Arial', sans-serif;
+  height: 100vh; /* 确保整个页面高度自适应 */
+  width: 100vw;
+}
+
+.echarts-container {
+  width: 100%;    /* 宽度增加到 100% */
+  height: 90vh;  /* 高度增加到 90vh 占据更多页面 */
+  margin: 0 auto; /* 居中 */
+  background-color: transparent; /* 图表背景透明，避免额外颜色层 */
 }
 </style>

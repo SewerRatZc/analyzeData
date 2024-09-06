@@ -24,8 +24,8 @@
 }
 
 :root {
-  --color-background: #ffcc33; 
-  --color-background-soft: #F8B400; 
+  --color-background: #ebb30e; 
+  --color-background-soft: #352c15; 
   --color-background-mute: #F8B400; 
 
   --color-text: var(--ev-c-text-1); 

@@ -73,7 +73,7 @@ code {
 }
 
 .vue {
-  background: -webkit-linear-gradient(315deg, #4ebee0 25%, #e9ac3a);
+  background: -webkit-linear-gradient(315deg, #4ebee0 25%, #f0ad31);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -126,7 +126,7 @@ code {
   overflow: hidden;
   align-items: center;
   border-radius: 22px;
-  background-color: #eb9c0b;
+  background-color: #e6a326;
   backdrop-filter: blur(24px);
 }
 
