@@ -21,24 +21,16 @@ export default {
   data() {
     return {
       labels: [
-        'CH-07--GDSP1',
-        'CH-07--GDSP0',
-        'CH-01--GDCLK1',
-        'CH-01--GDCLK0',
-        'CH-08--SDOE1',
-        'CH-08--SDOE0',
-        'CH-04--GDOE1',
-        'CH-04--GDOE0',
-        'CH-05--SDCLK1',
-        'CH-05--SDCLK0',
-        'CH-10--SDLE1',
-        'CH-10--SDLE0',
-        'CH-02--SDSP1',
-        'CH-02--SDSP0',
-        'CH-13--D01',
-        'CH-13--D00'
+        'CH-07--GDSP',
+        'CH-01--GDCLK',
+        'CH-08--SDOE',
+        'CH-04--GDOE',
+        'CH-05--SDCLK',
+        'CH-10--SDLE',
+        'CH-02--SDSP',
+        'CH-13--D0'
       ],
-      chartData: [], // 用于存储解析的数据
+      chartData: [], // 存储每个通道的0和1数据
       filePath: null
     };
   },
@@ -58,9 +50,9 @@ export default {
       try {
         const { headers, results } = await window.api.startProcessing(this.filePath);
         
-        // 合并文件中的 headers 和原始的 labels，确保解析文件后的 labels 保留完整
-        this.labels = this.labels.map(label => headers.includes(label) ? label : label);
-        
+        // 更新 labels，确保纵坐标每个通道有0和1
+        this.labels = headers;
+
         this.chartData = results;
         this.drawChart();
       } catch (error) {
@@ -70,7 +62,7 @@ export default {
     },
     drawChart() {
       const chart = echarts.init(this.$refs.echartsContainer);
-      const xData = this.chartData.map(item => item.timestamp); // 保持时间戳原样不做转换
+      const xData = this.chartData.map(item => item.timestamp); // 时间戳作为横坐标
       const seriesData = this.labels.map(() => []);
 
       this.chartData.forEach(item => {
@@ -81,48 +73,56 @@ export default {
         });
       });
 
-      // 获取横坐标最小值和最大值
-      const xMin = Math.min(...xData);
-      const xMax = Math.max(...xData);
-
       chart.setOption({
-        backgroundColor: 'transparent', // 设置透明背景，移除多余的颜色层
+        backgroundColor: 'transparent', // 设置透明背景，确保与页面背景一致
+        title: { text: 'Analyze Data Chart' },
         tooltip: { trigger: 'axis' },
-        xAxis: { 
-          type: 'value',  // 使用 'value' 类型
-          min: xMin,  // 设置横坐标最小值为数据中的最小时间戳
-          max: xMax,  // 设置横坐标最大值为数据中的最大时间戳
+        legend: {
+          type: 'scroll',
+          data: this.labels,  // 通过图例控制通道的显示和隐藏
+          top: '5%'
+        },
+        xAxis: {
+          type: 'category',  // 使用 category 类型，保持时间戳原样
+          data: xData, // 时间戳数据
           axisLabel: {
-            rotate: 45  // 旋转标签以避免重叠
+            rotate: 45,
+            interval: 0,
+            fontSize: 12
           }
         },
-        yAxis: { 
-          type: 'category', 
-          data: this.labels,
+        yAxis: {
+          type: 'category',
+          data: this.labels.reduce((acc, label) => acc.concat([`${label} 0`, `${label} 1`]), []), // 每个通道分为0和1两个值
           axisLabel: {
             fontSize: 12,
             interval: 0
           },
-          splitLine: { show: false } // 关闭 y 轴分隔线
+          splitLine: { show: false }
         },
         grid: {
-          left: '5%',  // 减小左右边距以增加绘图区域宽度
-          right: '%',
-          top: '10%',  // 减少上边距，让图表向上扩展
-          bottom: '5%', // 减少下边距，让图表向下扩展
+          left: '5%',
+          right: '5%',
+          top: '20%',
+          bottom: '15%',
           containLabel: true
         },
         series: this.labels.map((label, index) => ({
           name: label,
           type: 'line',
-          data: seriesData[index]
+          step: 'end', // 设置为阶梯线图的样式，这里使用 'end'，表示从点的结束处绘制阶梯
+          data: seriesData[index],
+          showSymbol: false,
+          lineStyle: {
+            width: 2
+          }
         })),
         dataZoom: [{ type: 'inside' }, { type: 'slider' }]
       });
     }
   },
   mounted() {
-    this.drawChart(); // 页面加载时绘制空图表
+    this.drawChart(); // 页面加载时绘制图表
   }
 };
 </script>
@@ -130,18 +130,18 @@ export default {
 <style scoped>
 #app {
   text-align: center;
-  background-color: #FFC107; /* 使用单一的背景色 */
+  background-color: #FFC107; /* 设置页面的背景颜色 */
   color: white;
   padding: 20px;
   font-family: 'Arial', sans-serif;
-  height: 100vh; /* 确保整个页面高度自适应 */
-  width: 100vw;
+  height: 100vh;
+  width: 100vw;;
 }
 
 .echarts-container {
-  width: 100%;    /* 宽度增加到 100% */
-  height: 90vh;  /* 高度增加到 90vh 占据更多页面 */
-  margin: 0 auto; /* 居中 */
-  background-color: transparent; /* 图表背景透明，避免额外颜色层 */
+  width: 100%;
+  height: 85vh;
+  margin: 0 auto;
+  background-color: transparent; /* 让背景色与页面一致 */
 }
 </style>
