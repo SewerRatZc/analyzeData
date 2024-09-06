@@ -73,10 +73,21 @@ export default {
         });
       });
 
+      const that = this;
+
       chart.setOption({
         backgroundColor: 'transparent', // 设置透明背景，确保与页面背景一致
-        title: { text: 'Analyze Data Chart' },
-        tooltip: { trigger: 'axis' },
+        tooltip: { 
+          trigger: 'axis',
+          formatter: function (params) {
+            // 根据params显示原始数据
+            let tooltipText = params[0].axisValueLabel + '<br/>';
+            params.forEach(param => {
+              tooltipText += `${param.seriesName}: ${param.data % 2}<br/>`; // 显示 0 或 1
+            });
+            return tooltipText;
+          }
+        },
         legend: {
           type: 'scroll',
           data: this.labels,  // 通过图例控制通道的显示和隐藏
@@ -92,9 +103,15 @@ export default {
           }
         },
         yAxis: {
-          type: 'category',
-          data: this.labels.reduce((acc, label) => acc.concat([`${label} 0`, `${label} 1`]), []), // 每个通道分为0和1两个值
+          type: 'value',
+          min: 0,
+          max: this.labels.length * 2, // 每个通道占用两个单位
+          interval: 2, // 每个通道间隔 2
           axisLabel: {
+            formatter: function (value) {
+              const labelIndex = Math.floor(value / 2);
+              return value % 2 === 0 && labelIndex < that.labels.length ? that.labels[labelIndex] : '';
+            },
             fontSize: 12,
             interval: 0
           },
@@ -110,14 +127,18 @@ export default {
         series: this.labels.map((label, index) => ({
           name: label,
           type: 'line',
-          step: 'end', // 设置为阶梯线图的样式，这里使用 'end'，表示从点的结束处绘制阶梯
-          data: seriesData[index],
+          step: 'end', // 设置为阶梯线图的样式
+          data: seriesData[index].map(value => value === 1 ? (index * 2 + 1) : index * 2), // 0 和 1 对应的y坐标区间
           showSymbol: false,
           lineStyle: {
             width: 2
           }
         })),
         dataZoom: [{ type: 'inside' }, { type: 'slider' }]
+      });
+
+      window.addEventListener('resize', () => {
+        chart.resize(); // 当窗口调整大小时，重新调整图表大小
       });
     }
   },
@@ -135,7 +156,7 @@ export default {
   padding: 20px;
   font-family: 'Arial', sans-serif;
   height: 100vh;
-  width: 100vw;;
+  width: 100vw;
 }
 
 .echarts-container {
