@@ -3,7 +3,18 @@
     <div>
       <h1>Analyze Data</h1>
       <input type="file" @change="onFileSelected" accept=".txt" />
-      <button @click="processFile">Process File</button>
+      <button @click="processFile">解析文件</button>
+    </div>
+    <div>
+      <input v-model="timestampInput" placeholder="输入时间戳" />
+      <button @click="findBlockByTimestamp">通过时间戳查找数据块</button>
+    </div>
+    <div>
+      <input v-model="blockInput" placeholder="输入块号" />
+      <button @click="findDataByBlock">通过块号查找数据</button>
+    </div>
+    <div>
+      <button @click="toggleRefresh">{{ isRefreshing ? '暂停自动刷新' : '恢复自动刷新' }}</button>
     </div>
     <!-- ECharts 容器 -->
     <div class="echarts-container" ref="echartsContainer"></div>
@@ -31,11 +42,15 @@ export default {
         'CH-13--D0'
       ],
       chartData: [], // 存储每个通道的0和1数据
-      filePath: null,
-      intervalId: null // 用于动态刷新
+      filePath: null, // 上传文件路径
+      timestampInput: '', // 输入时间戳
+      blockInput: '', // 输入块号
+      intervalId: null, // 用于动态刷新
+      isRefreshing: true // 是否开启自动刷新
     };
   },
   methods: {
+    // 处理文件选择
     onFileSelected(event) {
       let file = event.target.files[0];
       if (!file) {
@@ -43,44 +58,55 @@ export default {
       }
       this.filePath = file.path; // 获取文件路径
     },
+    
+    // 解析文件
     async processFile() {
       if (!this.filePath) {
         alert('请选择一个文件');
         return;
       }
       try {
-        const { headers, results } = await window.api.startProcessing(this.filePath);
-        this.labels = headers;
-        this.chartData = results;
-
-        // 开始动态更新
-        if (this.intervalId) {
-          clearInterval(this.intervalId); // 清除之前的定时器
+        console.log('Sending file for processing:', this.filePath);
+        const result = await window.api.startProcessing(this.filePath);
+        
+        if (!result || !result.success) {
+          throw new Error('文件处理失败');
         }
-        let currentIndex = 0;
-        this.intervalId = setInterval(() => {
-          const sliceData = this.chartData.slice(currentIndex, currentIndex + 30); // 每次展示30个点
-          this.drawChart(sliceData);
-          currentIndex += 30;
-          if (currentIndex >= this.chartData.length) {
-            currentIndex = 0; // 循环展示
-          }
-        }, 1000);
+
+        console.log('文件处理成功');
+        this.drawChart([]);  // 成功后画图
+        this.startAutoRefresh(); // 开启自动刷新
       } catch (error) {
-        console.error('解析文件时出错', error);
-        alert('解析文件时出错');
+        console.error('解析文件时出错:', error.message);
+        alert(`解析文件时出错: ${error.message}`);
       }
     },
-    drawChart(sliceData) {
+
+    // 自动刷新
+    async startAutoRefresh() {
+      if (this.intervalId) {
+        clearInterval(this.intervalId);
+      }
+      this.intervalId = setInterval(async () => {
+        await this.findDataByBlock();  // 每秒自动获取数据
+      }, 1000);
+    },
+    
+    // 绘制图表，动态加载多个数据块
+    drawChart(blocksData) {
       const chart = echarts.init(this.$refs.echartsContainer);
-      const xData = sliceData.map(item => item.timestamp); // 时间戳作为横坐标
+
+      const xData = [];
       const seriesData = this.labels.map(() => []);
 
-      sliceData.forEach(item => {
-        item.values.forEach((value, index) => {
-          if (index < this.labels.length) {
-            seriesData[index].push(value); // 保证只显示0或1的值
-          }
+      blocksData.forEach(block => {
+        block.blockData.forEach(item => {
+          xData.push(item.timestamp); // 将时间戳加入xData
+          item.values.forEach((value, index) => {
+            if (index < this.labels.length) {
+              seriesData[index].push(value); // 保证只显示0或1的值
+            }
+          });
         });
       });
 
@@ -105,7 +131,7 @@ export default {
         },
         xAxis: {
           type: 'category',
-          data: xData,
+          data: xData, // 显示时间戳作为横坐标
           axisLabel: {
             rotate: 45,
             interval: 0,
@@ -144,17 +170,86 @@ export default {
             width: 2
           }
         })),
-        dataZoom: [{ type: 'inside' }, { type: 'slider' }]
+        dataZoom: [
+          { 
+            type: 'inside' 
+          }, 
+          { 
+            type: 'slider' 
+          }
+        ]
       });
 
+      // 当窗口调整大小时，重新调整图表大小
       window.addEventListener('resize', () => {
-        chart.resize(); // 当窗口调整大小时，重新调整图表大小
+        chart.resize();
       });
+    },
+
+    // 根据时间戳查找块
+    async findBlockByTimestamp() {
+      try {
+        const blockNumber = await window.api.getBlockByTimestamp(parseInt(this.timestampInput, 10));
+        if (!blockNumber) {
+          alert('找不到对应的块');
+        } else {
+          this.blockInput = blockNumber.blockNumber;
+          this.findDataByBlock(); // 查找到块后展示数据
+        }
+      } catch (error) {
+        console.error('查找块号时出错:', error);
+        alert('查找块号时出错');
+      }
+    },
+
+    // 根据块号查找数据
+    async findDataByBlock() {
+      try {
+        const currentBlockData = await window.api.getBlockData(parseInt(this.blockInput, 10));
+
+        if (!currentBlockData || !currentBlockData.blockData) {
+          alert('找不到块数据');
+          return;
+        }
+
+        const blocksData = [currentBlockData]; // 初始化为当前块的数据
+
+        // 预加载前后两个块的数据
+        const prevBlock = await window.api.getBlockData(currentBlockData.blockNumber - 1);
+        const nextBlock = await window.api.getBlockData(currentBlockData.blockNumber + 1);
+
+        if (prevBlock && prevBlock.blockData) {
+          blocksData.unshift(prevBlock);
+        }
+        if (nextBlock && nextBlock.blockData) {
+          blocksData.push(nextBlock);
+        }
+
+        this.drawChart(blocksData);
+
+      } catch (error) {
+        console.error('查找数据时出错:', error);
+        alert('查找数据时出错');
+      }
+    },
+
+    // 开启或暂停自动刷新
+    toggleRefresh() {
+      this.isRefreshing = !this.isRefreshing;
+      if (this.isRefreshing) {
+        this.startAutoRefresh();
+      } else {
+        clearInterval(this.intervalId);
+      }
     }
   },
+
+  // 在组件挂载时，绘制空图表
   mounted() {
-    this.drawChart([]); // 页面加载时绘制空图表
+    this.drawChart([]); 
   },
+
+  // 组件销毁前清除定时器
   beforeUnmount() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
