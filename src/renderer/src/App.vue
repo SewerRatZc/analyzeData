@@ -31,6 +31,7 @@ import * as echarts from 'echarts';
 export default {
   data() {
     return {
+      chart: null,
       labels: [
         'CH-07--GDSP',
         'CH-01--GDCLK',
@@ -46,7 +47,11 @@ export default {
       timestampInput: '', // 输入时间戳
       blockInput: '', // 输入块号
       intervalId: null, // 用于动态刷新
-      isRefreshing: true // 是否开启自动刷新
+      isRefreshing: true, // 是否开启自动刷新
+      currentBlockData: [], // 当前块数据
+      currentDataIndex: 0, // 当前块中读取到的数据索引
+      blockCache: [], // 缓存前后五个块
+      currentBlockNumber: 0, // 当前显示的块号
     };
   },
   methods: {
@@ -58,7 +63,7 @@ export default {
       }
       this.filePath = file.path; // 获取文件路径
     },
-    
+
     // 解析文件
     async processFile() {
       if (!this.filePath) {
@@ -68,13 +73,12 @@ export default {
       try {
         console.log('Sending file for processing:', this.filePath);
         const result = await window.api.startProcessing(this.filePath);
-        
+
         if (!result || !result.success) {
           throw new Error('文件处理失败');
         }
 
         console.log('文件处理成功');
-        this.drawChart([]);  // 成功后画图
         this.startAutoRefresh(); // 开启自动刷新
       } catch (error) {
         console.error('解析文件时出错:', error.message);
@@ -87,30 +91,47 @@ export default {
       if (this.intervalId) {
         clearInterval(this.intervalId);
       }
+      this.currentDataIndex = 0;
       this.intervalId = setInterval(async () => {
-        await this.findDataByBlock();  // 每秒自动获取数据
-      }, 1000);
+        if (this.currentBlockData.length === 0 || this.currentDataIndex >= this.currentBlockData.length) {
+          // 如果当前块数据加载完毕，获取下一个块
+          await this.loadAdjacentBlocks();
+          this.currentDataIndex = 0; // 重置数据索引
+        }
+        this.updateChartWithNextData(); // 更新图表
+      }, 1000); // 每秒钟更新
     },
-    
-    // 绘制图表，动态加载多个数据块
-    drawChart(blocksData) {
+
+    // 从当前块中提取接下来的30组数据并更新图表
+    updateChartWithNextData() {
+      const nextData = this.currentBlockData.slice(this.currentDataIndex, this.currentDataIndex + 30);
+      this.currentDataIndex += 30; // 更新索引
+      this.drawChart(nextData); // 传入新数据绘制图表
+    },
+
+    // 绘制图表，动态加载数据
+    drawChart(dataSlice) {
+      // if(chart){
+      //   chart.dispose(); // 清空之前的图表数据
+      // }
+
+      // const existingChart = echarts.getInstanceByDom(this.$refs.echartsContainer);
+      // if (existingChart) {
+      //   existingChart.dispose(); // 销毁之前的图表实例
+      // }
+
       const chart = echarts.init(this.$refs.echartsContainer);
 
-      const xData = [];
-      const seriesData = this.labels.map(() => []);
+      const xData = dataSlice.map(item => item.timestamp); // 将时间戳加入xData
+      const seriesData = this.labels.map(() => []); // 清空每个通道的数据
 
-      blocksData.forEach(block => {
-        block.blockData.forEach(item => {
-          xData.push(item.timestamp); // 将时间戳加入xData
-          item.values.forEach((value, index) => {
-            if (index < this.labels.length) {
-              seriesData[index].push(value); // 保证只显示0或1的值
-            }
-          });
+      dataSlice.forEach(item => {
+        item.values.forEach((value, index) => {
+          if (index < this.labels.length) {
+            seriesData[index].push(value); // 只显示0或1的值
+          }
         });
       });
-
-      const that = this;
 
       chart.setOption({
         backgroundColor: 'transparent',
@@ -144,12 +165,11 @@ export default {
           max: this.labels.length * 2, // 每个通道的0和1在不同的位置显示
           interval: 2,
           axisLabel: {
-            formatter: function (value) {
+            formatter: (value) => {
               const labelIndex = Math.floor(value / 2);
-              return value % 2 === 0 && labelIndex < that.labels.length ? that.labels[labelIndex] : '';
+              return value % 2 === 0 && labelIndex < this.labels.length ? this.labels[labelIndex] : '';
             },
-            fontSize: 12,
-            interval: 0
+            fontSize: 12
           },
           splitLine: { show: false }
         },
@@ -164,76 +184,82 @@ export default {
           name: label,
           type: 'line',
           step: 'end',
-          data: seriesData[index].map(val => val + index * 2), // 通过index错开每个通道，且只保留0或1的数值
+          data: seriesData[index].map(val => val + index * 2), // 错开每个通道的线
           showSymbol: false,
           lineStyle: {
             width: 2
           }
         })),
         dataZoom: [
-          { 
-            type: 'inside' 
-          }, 
-          { 
-            type: 'slider' 
-          }
+          { type: 'inside' },
+          { type: 'slider' }
         ]
       });
 
-      // 当窗口调整大小时，重新调整图表大小
       window.addEventListener('resize', () => {
-        chart.resize();
+        chart.resize(); // 当窗口调整大小时，重新调整图表大小
       });
+    },
+
+    // 加载当前块和相邻的块
+    async loadAdjacentBlocks() {
+      const blockData = await this.getBlockData(this.currentBlockNumber);
+      if (blockData) {
+        this.currentBlockData = blockData.blockData;
+      }
+      this.cacheBlocks(); // 缓存相邻块
+    },
+
+    // 根据块号查找数据
+    async findDataByBlock() {
+      this.currentBlockNumber = parseInt(this.blockInput, 10); // 设置当前块号
+      await this.loadAdjacentBlocks();
+      this.currentDataIndex = 0;
+      this.updateChartWithNextData(); // 开始展示数据
+    },
+
+    // 缓存前后两个块文件
+    async cacheBlocks() {
+      const prevBlock = await this.getBlockData(this.currentBlockNumber - 1);
+      const nextBlock = await this.getBlockData(this.currentBlockNumber + 1);
+
+      if (prevBlock) {
+        this.blockCache.unshift(prevBlock);
+      }
+      if (nextBlock) {
+        this.blockCache.push(nextBlock);
+      }
+
+      // 保持缓存区最多5个块文件
+      if (this.blockCache.length > 5) {
+        this.blockCache.shift(); // 删除最旧的块
+      }
+    },
+
+    // 从 API 获取块数据
+    async getBlockData(blockNumber) {
+      try {
+        return await window.api.getBlockData(blockNumber);
+      } catch (error) {
+        console.error('Error fetching block data:', error);
+      }
+      return null;
     },
 
     // 根据时间戳查找块
     async findBlockByTimestamp() {
       try {
         const blockNumber = await window.api.getBlockByTimestamp(parseInt(this.timestampInput, 10));
-        if (!blockNumber) {
-          alert('找不到对应的块');
-        } else {
-          this.blockInput = blockNumber.blockNumber;
-          this.findDataByBlock(); // 查找到块后展示数据
-        }
+        this.blockInput = blockNumber;
+        this.currentBlockNumber = blockNumber;
+        await this.loadAdjacentBlocks();
       } catch (error) {
         console.error('查找块号时出错:', error);
         alert('查找块号时出错');
       }
     },
 
-    // 根据块号查找数据
-    async findDataByBlock() {
-      try {
-        const currentBlockData = await window.api.getBlockData(parseInt(this.blockInput, 10));
-
-        if (!currentBlockData || !currentBlockData.blockData) {
-          alert('找不到块数据');
-          return;
-        }
-
-        const blocksData = [currentBlockData]; // 初始化为当前块的数据
-
-        // 预加载前后两个块的数据
-        const prevBlock = await window.api.getBlockData(currentBlockData.blockNumber - 1);
-        const nextBlock = await window.api.getBlockData(currentBlockData.blockNumber + 1);
-
-        if (prevBlock && prevBlock.blockData) {
-          blocksData.unshift(prevBlock);
-        }
-        if (nextBlock && nextBlock.blockData) {
-          blocksData.push(nextBlock);
-        }
-
-        this.drawChart(blocksData);
-
-      } catch (error) {
-        console.error('查找数据时出错:', error);
-        alert('查找数据时出错');
-      }
-    },
-
-    // 开启或暂停自动刷新
+    // 切换自动刷新
     toggleRefresh() {
       this.isRefreshing = !this.isRefreshing;
       if (this.isRefreshing) {
@@ -244,12 +270,10 @@ export default {
     }
   },
 
-  // 在组件挂载时，绘制空图表
   mounted() {
-    this.drawChart([]); 
+    this.drawChart([]); // 初始化时绘制空图表
   },
 
-  // 组件销毁前清除定时器
   beforeUnmount() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
