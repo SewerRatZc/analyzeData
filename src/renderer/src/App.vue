@@ -14,13 +14,20 @@
       <button @click="findDataByBlock">通过块号查找数据</button>
     </div>
     <div>
+      <p>
+        当前加载的块号：{{ currentBlockNumber }}
+      </p>
+    </div>
+    <div>
       <button @click="toggleRefresh">{{ isRefreshing ? '暂停自动刷新' : '恢复自动刷新' }}</button>
     </div>
-    <!-- ECharts 容器 -->
     <div class="echarts-container" ref="echartsContainer"></div>
-    <!-- 展示当前标签长度 -->
     <div>
       <p>Total Labels: {{ labels.length }}</p>
+    </div>
+        <!-- 滑动进度条控制块文件加载 -->
+        <div>
+      <input type="range" min="0" :max="maxBlockNumber" v-model="currentBlockNumber" @input="onBlockNumberChanged" />
     </div>
   </div>
 </template>
@@ -79,6 +86,8 @@ export default {
         }
 
         console.log('文件处理成功');
+        this.maxBlockNumber = result.processedData.length - 1;
+        this.currentBlockNumber = 0; // 从第一个块号开始
         this.startAutoRefresh(); // 开启自动刷新
       } catch (error) {
         console.error('解析文件时出错:', error.message);
@@ -115,10 +124,10 @@ export default {
       //   chart.dispose(); // 清空之前的图表数据
       // }
 
-      // const existingChart = echarts.getInstanceByDom(this.$refs.echartsContainer);
-      // if (existingChart) {
-      //   existingChart.dispose(); // 销毁之前的图表实例
-      // }
+      const existingChart = echarts.getInstanceByDom(this.$refs.echartsContainer);
+      if (existingChart) {
+        existingChart.dispose(); // 销毁之前的图表实例
+      }
 
       const chart = echarts.init(this.$refs.echartsContainer);
 
@@ -134,6 +143,7 @@ export default {
       });
 
       chart.setOption({
+        animation: false,//关闭动画
         backgroundColor: 'transparent',
         tooltip: {
           trigger: 'axis',
@@ -217,6 +227,7 @@ export default {
       this.currentDataIndex = 0;
       this.updateChartWithNextData(); // 开始展示数据
     },
+
 
     // 缓存前后两个块文件
     async cacheBlocks() {
