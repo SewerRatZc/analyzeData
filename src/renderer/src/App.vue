@@ -22,13 +22,28 @@
       <button @click="toggleRefresh">{{ isRefreshing ? '暂停自动刷新' : '恢复自动刷新' }}</button>
     </div>
     <div class="echarts-container" ref="echartsContainer"></div>
-    <div>
+    <!-- <div>
       <p>Total Labels: {{ labels.length }}</p>
-    </div>
-        <!-- 滑动进度条控制块文件加载 -->
-        <div>
-      <input type="range" min="0" :max="maxBlockNumber" v-model="currentBlockNumber" @input="onBlockNumberChanged" />
-    </div>
+    </div> -->
+    <!-- 滑动进度条控制块文件加载 -->
+    <!-- <div class="progress-container">
+      <p>当前加载的块文件：{{ currentBlockNumber }}</p>
+      <input type="range"
+       ref="blockSlider"
+      :min="cacheStartBlock"
+      :max="cacheEndBlock" 
+      v-model="currentBlockNumber"
+      @input="onBlockNumberChanged" />
+    </div> -->
+<div class="progress-container">
+  <input type="range" 
+  ref="blockSlider" 
+  :min="0" 
+  :max="maxBlockNumber" 
+  v-model="currentBlockNumber" 
+  @input="onBlockNumberChanged" />
+</div>
+
   </div>
 </template>
 
@@ -59,6 +74,9 @@ export default {
       currentDataIndex: 0, // 当前块中读取到的数据索引
       blockCache: [], // 缓存前后五个块
       currentBlockNumber: 0, // 当前显示的块号
+
+      // cacheStartBlock: 0, // 缓存的起始块号
+      // cacheEndBlock: 4, // 缓存的结束块号，初始设为5块
     };
   },
   methods: {
@@ -84,10 +102,12 @@ export default {
         if (!result || !result.success) {
           throw new Error('文件处理失败');
         }
-
         console.log('文件处理成功');
         this.maxBlockNumber = result.processedData.length - 1;
-        this.currentBlockNumber = 0; // 从第一个块号开始
+        // this.cacheStartBlock=0;
+        // this.cacheEndBlock=Math.min(this.maxBlockNumber,4);
+        // this.currentBlockNumber = this.cacheStartBlock; // 从第一个块号开始
+        this.currentBlockNumber =0;
         this.startAutoRefresh(); // 开启自动刷新
       } catch (error) {
         console.error('解析文件时出错:', error.message);
@@ -106,6 +126,7 @@ export default {
           // 如果当前块数据加载完毕，获取下一个块
           await this.loadAdjacentBlocks();
           this.currentDataIndex = 0; // 重置数据索引
+          this.currentBlockNumber += 1; // 更新块号
         }
         this.updateChartWithNextData(); // 更新图表
       }, 1000); // 每秒钟更新
@@ -211,14 +232,29 @@ export default {
       });
     },
 
+    // 根据进度条拖动事件更新当前块号
+    async onBlockNumberChanged() {
+      // const relativeIndex = this.currentBlockNumber - this.cacheStartBlock;
+      // if (relativeIndex >= 0 && relativeIndex < this.cacheBlocks.length) {
+        // this.currentBlockNumber = this.blockCache[relativeIndex].blockData;
+        // this.currentDataIndex = 0;
+        this.currentBlockNumber = parseInt(this.$refs.blockSlider.value, 10);
+        this.loadAdjacentBlocks();
+      // }
+    },
+
     // 加载当前块和相邻的块
     async loadAdjacentBlocks() {
       const blockData = await this.getBlockData(this.currentBlockNumber);
       if (blockData) {
         this.currentBlockData = blockData.blockData;
+        this.currentDataIndex = 0;
+        this.updateChartWithNextData();
       }
       this.cacheBlocks(); // 缓存相邻块
     },
+
+
 
     // 根据块号查找数据
     async findDataByBlock() {
@@ -245,6 +281,14 @@ export default {
       if (this.blockCache.length > 5) {
         this.blockCache.shift(); // 删除最旧的块
       }
+      // // 更新进度条的最小值和最大值，只允许操作缓存区的块
+      // this.cacheStartBlock = this.blockCache[0].blockNumber; // 缓存起始块
+      // this.cacheEndBlock = this.blockCache[this.blockCache.length - 1].blockNumber; // 缓存结束块
+      // this.currentBlockNumber = this.cacheStartBlock;
+
+      // // 限制进度条的范围
+      // this.$refs.blockSlider.min = this.cacheStartBlock;
+      // this.$refs.blockSlider.max = this.cacheEndBlock;
     },
 
     // 从 API 获取块数据
@@ -296,7 +340,7 @@ export default {
 <style scoped>
 #app {
   text-align: center;
-  background-color: #FFC107; 
+  background-color: #FFC107;
   color: white;
   padding: 20px;
   font-family: 'Arial', sans-serif;
@@ -309,5 +353,42 @@ export default {
   height: 85vh;
   margin: 0 auto;
   background-color: transparent;
+}
+
+/* 进度条容器 */
+.progress-container {
+  width: 80%;
+  /* 设置宽度为整个页面的80% */
+  /* margin: 10px auto; 居中对齐 */
+  right: 0%;
+}
+
+/* 调整进度条的样式 */
+input[type="range"] {
+  /* -webkit-appearance: none; */
+  width: 100%;
+  height: 8px;
+  background: #ccc;
+  outline: none;
+  border-radius: 5px;
+  opacity: 0.7;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  background: #1e88e5;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  background: #1e88e5;
+  cursor: pointer;
+  border-radius: 50%;
 }
 </style>
