@@ -35,14 +35,10 @@
       v-model="currentBlockNumber"
       @input="onBlockNumberChanged" />
     </div> -->
-<div class="progress-container">
-  <input type="range" 
-  ref="blockSlider" 
-  :min="0" 
-  :max="maxBlockNumber" 
-  v-model="currentBlockNumber" 
-  @input="onBlockNumberChanged" />
-</div>
+    <div class="progress-container">
+      <input type="range" ref="blockSlider" :min="0" :max="maxBlockNumber" v-model="currentBlockNumber"
+        @input="onBlockNumberChanged" />
+    </div>
 
   </div>
 </template>
@@ -87,6 +83,7 @@ export default {
         return;
       }
       this.filePath = file.path; // 获取文件路径
+      console.log(`文件路径被选定为: ${this.filePath}`);
     },
 
     // 解析文件
@@ -96,6 +93,7 @@ export default {
         return;
       }
       try {
+        console.log(`------${this.filePath}------`);
         console.log('Sending file for processing:', this.filePath);
         const result = await window.api.startProcessing(this.filePath);
 
@@ -107,7 +105,7 @@ export default {
         // this.cacheStartBlock=0;
         // this.cacheEndBlock=Math.min(this.maxBlockNumber,4);
         // this.currentBlockNumber = this.cacheStartBlock; // 从第一个块号开始
-        this.currentBlockNumber =0;
+        this.currentBlockNumber = 0;
         this.startAutoRefresh(); // 开启自动刷新
       } catch (error) {
         console.error('解析文件时出错:', error.message);
@@ -236,16 +234,22 @@ export default {
     async onBlockNumberChanged() {
       // const relativeIndex = this.currentBlockNumber - this.cacheStartBlock;
       // if (relativeIndex >= 0 && relativeIndex < this.cacheBlocks.length) {
-        // this.currentBlockNumber = this.blockCache[relativeIndex].blockData;
-        // this.currentDataIndex = 0;
-        this.currentBlockNumber = parseInt(this.$refs.blockSlider.value, 10);
-        this.loadAdjacentBlocks();
+      // this.currentBlockNumber = this.blockCache[relativeIndex].blockData;
+      // this.currentDataIndex = 0;
+      this.currentBlockNumber = parseInt(this.$refs.blockSlider.value, 10);
+      this.loadAdjacentBlocks();
       // }
     },
 
     // 加载当前块和相邻的块
-    async loadAdjacentBlocks() {
-      const blockData = await this.getBlockData(this.currentBlockNumber);
+    async loadAdjacentBlocks(signal) {
+      let isManual =null;
+      if(signal === 1){//通过块号查询
+        isManual =true;
+      }else{//自动加载
+        isManual = false;
+      }
+      const blockData = await this.getBlockData(this.currentBlockNumber, isManual);
       if (blockData) {
         this.currentBlockData = blockData.blockData;
         this.currentDataIndex = 0;
@@ -256,49 +260,151 @@ export default {
 
 
 
-    // 根据块号查找数据
+
     async findDataByBlock() {
       this.currentBlockNumber = parseInt(this.blockInput, 10); // 设置当前块号
-      await this.loadAdjacentBlocks();
+      const signal=1;
+      await this.loadAdjacentBlocks(signal);
       this.currentDataIndex = 0;
       this.updateChartWithNextData(); // 开始展示数据
     },
 
+    // async findDataByBlock() {
+    //   clearInterval(this.intervalId); // 暂停自动刷新
+    //   const blockNumber = parseInt(this.blockInput, 10); // 获取输入的块号
+    //   if (isNaN(blockNumber)) {
+    //     alert("请输入有效的块号");
+    //     return;
+    //   }
 
-    // 缓存前后两个块文件
+    //   // 传递 isManual = true，表示手动查询
+    //   const blockData = await this.getBlockData(blockNumber, true);
+    //   if (blockData) {
+    //     this.currentBlockData = blockData.blockData;
+    //     this.currentDataIndex = 0;
+    //     this.updateChartWithNextData(); // 开始展示数据
+    //     this.startAutoRefresh();
+    //   }
+    // },
+
+
+
+
     async cacheBlocks() {
-      const prevBlock = await this.getBlockData(this.currentBlockNumber - 1);
-      const nextBlock = await this.getBlockData(this.currentBlockNumber + 1);
-
-      if (prevBlock) {
-        this.blockCache.unshift(prevBlock);
+      // 确保 currentBlockNumber 在合法范围内
+      if (this.currentBlockNumber < 0 || this.currentBlockNumber >= this.totalBlocks) {
+        console.error('Invalid current block number:', this.currentBlockNumber);
+        return;
       }
-      if (nextBlock) {
-        this.blockCache.push(nextBlock);
+
+      const prevBlockNumber = this.currentBlockNumber - 1;
+      const nextBlockNumber = this.currentBlockNumber + 1;
+
+      // 避免下标越界的块号
+      if (prevBlockNumber >= 0) {
+        try {
+          const prevBlock = await this.getBlockData(prevBlockNumber,false);
+          if (prevBlock) {
+            this.blockCache.unshift(prevBlock);
+            console.log(`Cached previous block number: ${prevBlockNumber}`);
+          }
+        } catch (err) {
+          console.error(`Error caching previous block number: ${prevBlockNumber}`, err);
+        }
+      }
+
+      if (nextBlockNumber < this.totalBlocks) {
+        try {
+          const nextBlock = await this.getBlockData(nextBlockNumber, false);
+          if (nextBlock) {
+            this.blockCache.push(nextBlock);
+            console.log(`Cached next block number: ${nextBlockNumber}`);
+          }
+        } catch (err) {
+          console.error(`Error caching next block number: ${nextBlockNumber}`, err);
+        }
       }
 
       // 保持缓存区最多5个块文件
       if (this.blockCache.length > 5) {
         this.blockCache.shift(); // 删除最旧的块
+        console.log('Removed the oldest block from cache to maintain 5-block limit.');
       }
-      // // 更新进度条的最小值和最大值，只允许操作缓存区的块
-      // this.cacheStartBlock = this.blockCache[0].blockNumber; // 缓存起始块
-      // this.cacheEndBlock = this.blockCache[this.blockCache.length - 1].blockNumber; // 缓存结束块
-      // this.currentBlockNumber = this.cacheStartBlock;
 
-      // // 限制进度条的范围
-      // this.$refs.blockSlider.min = this.cacheStartBlock;
-      // this.$refs.blockSlider.max = this.cacheEndBlock;
+      // 更新进度条的最小值和最大值，只允许操作缓存区的块
+      if (this.blockCache.length > 0) {
+        this.cacheStartBlock = Math.max(0, this.currentBlockNumber - 2); // 确保起始块号不小于0
+        this.cacheEndBlock = Math.min(this.totalBlocks - 1, this.currentBlockNumber + 2); // 确保结束块号不大于总块数
+        console.log(`Cache range updated: Start = ${this.cacheStartBlock}, End = ${this.cacheEndBlock}`);
+      }
+
+      // 限制进度条的范围
+      this.$refs.blockSlider.min = this.cacheStartBlock;
+      this.$refs.blockSlider.max = this.cacheEndBlock;
     },
 
     // 从 API 获取块数据
-    async getBlockData(blockNumber) {
-      try {
-        return await window.api.getBlockData(blockNumber);
-      } catch (error) {
-        console.error('Error fetching block data:', error);
+    async getBlockData(blockNumber, isManual) {
+
+      // console.log(`========isManual in getBlockData :${isManual}========`);
+      // console.log(`===this.filePath:${this.filePath}`);
+
+      const filePath = this.filePath;
+
+      // console.log(`===filePath:${filePath}`);
+      // console.log(`-----${filePath.length}`);
+
+      // console.log(`filePath 类型: ${typeof filePath}`);
+      // console.log(`filePath 值: ${filePath}`);
+
+      // console.log(`filePath empty check: ${!filePath}`);
+      // console.log(`filePath length check: ${!filePath.length}`);
+
+      // if (!filePath||!filePath.length) {
+        // console.log("进if分支了吗");
+        // if (isManual) {
+        //   {
+        //     alert("请先选择并解析文件");
+        //   }
+        //   return null;  // 终止块号查询
+        // }
+
+        try {
+          const result = await window.api.getBlockData({ blockNumber, filePath });
+
+          // console.log(`===result: ${JSON.stringify(result, null, 2)}`);
+
+          if (result && result.blockData && result.blockData.length > 0) {
+
+            // console.log(`====进来trycatch===`);
+            if (isManual) {
+              alert("块号加载成功");
+            }
+            return result;
+          } else {
+            if (isManual) {
+              alert("块号未找到，加载失败");
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching block data:', error);
+          if (isManual) {
+            alert("查询块号时发生错误，请重试");
+          }
+        }
+        return null;
+      // }
+    },
+
+    // 如果是通过按钮来查询的，就显示提示信息
+    onSearchByBlockNumber() {
+      const blockNumber = parseInt(this.inputBlockNumber, 10);
+      if (isNaN(blockNumber)) {
+        alert("请输入有效的块号");
+        return;
       }
-      return null;
+
+      this.getBlockData(blockNumber, true);
     },
 
     // 根据时间戳查找块

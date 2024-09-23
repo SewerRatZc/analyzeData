@@ -1,10 +1,12 @@
+
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { join } from 'path';
+import { path, join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import fs from 'fs';
 import readline from 'readline';
 import { setupDatabase, insertDataBlock, insertTimestampIndex } from './database.js';
+
 
 let currentBlockNumber = 0; // 当前块号，用于前端自动刷新时递增
 
@@ -41,7 +43,20 @@ app.whenReady().then(() => {
 
   ipcMain.handle('startProcessing', async (event, filePath) => {
     try {
-      const db = setupDatabase();
+      // const fileName = path.basename(filePath,'.txt');
+      const fileNameWithExt = filePath.split(/[/\\]/).pop();
+      const fileName = fileNameWithExt.replace('.txt', '');
+      console.log(`======${fileName}======`);
+      const db = setupDatabase(fileName);
+      const dirPath = join(__dirname, `../../resources/${fileName}`);
+      // console.log("fileName2:", fileName2);
+
+      // 如果文件夹不存在，创建它
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+        console.log(`Created directory: ${dirPath}`);
+      }
+
       const fileStream = fs.createReadStream(filePath);
       const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
@@ -59,7 +74,7 @@ app.whenReady().then(() => {
         blockData.push(line);
 
         if (blockData.length >= 1000) {
-          const blockFilePath = join(__dirname, `../../resources/block_${blockNumber}.txt`);
+          const blockFilePath = join(dirPath, `block_${blockNumber}.txt`);
           console.log(`Creating block file: ${blockFilePath}`);
           fs.writeFileSync(blockFilePath, blockData.join('\n'), 'utf-8');
           const endOffset = blockData.length;
@@ -76,7 +91,7 @@ app.whenReady().then(() => {
       }
 
       if (blockData.length > 0) {
-        const blockFilePath = join(__dirname, `../../resources/block_${blockNumber}.txt`);
+        const blockFilePath = join(dirPath, `block_${blockNumber}.txt`);
         console.log(`Creating last block file: ${blockFilePath}`);
         fs.writeFileSync(blockFilePath, blockData.join('\n'), 'utf-8');
         const endOffset = blockData.length;
@@ -95,14 +110,39 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('getBlockData', async (event, blockNumber) => {
+  ipcMain.handle('getBlockData', async (event, {blockNumber,filePath}) => {
     try {
-      const db = setupDatabase();
+      const fileNameWithExt = filePath.split(/[/\\]/).pop();
+      const fileName = fileNameWithExt.replace('.txt', '');
+      console.log(`======filename in getBlockData:${fileName}======`);
+      const db = setupDatabase(fileName);
       const blockStmt = db.prepare('SELECT * FROM data_blocks WHERE block_number = ?');
       const blockInfo = blockStmt.get(blockNumber);
 
+
       if (!blockInfo) {
+        console.error(`Block number ${blockNumber} not found in database.`);
         return null;
+      }
+
+      console.log(`==========Reading block file: ${blockInfo.file_path}`);
+
+
+      // const blocks = db.prepare('SELECT * FROM data_blocks');
+      // const allBlocks = blocks.all();
+      // console.log(allBlocks);  // 输出所有的块信息
+
+
+
+      // 检查文件是否存在
+      if (!fs.existsSync(blockInfo.file_path)) {
+        console.error(`File not found: ${blockInfo.file_path}`);
+        return null;
+      }
+
+      if (blockNumber === -1) {
+        console.error('Invalid block number, skipping...');
+        return;  // 处理错误，避免继续查询
       }
 
       const blockData = fs.readFileSync(blockInfo.file_path, 'utf-8').split('\n').map(line => {
@@ -115,6 +155,7 @@ app.whenReady().then(() => {
       console.error(`Error fetching block data for block number ${blockNumber}:`, error);
       throw error;
     }
+
   });
 
   createWindow();
