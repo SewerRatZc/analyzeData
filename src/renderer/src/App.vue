@@ -17,27 +17,16 @@
       <p>
         当前加载的块号：{{ currentBlockNumber }}
       </p>
+      <p>进度: {{ progressPercentage }}%</p>
     </div>
     <div>
       <button @click="toggleRefresh">{{ isRefreshing ? '暂停自动刷新' : '恢复自动刷新' }}</button>
     </div>
     <div class="echarts-container" ref="echartsContainer"></div>
-    <!-- <div>
-      <p>Total Labels: {{ labels.length }}</p>
-    </div> -->
-    <!-- 滑动进度条控制块文件加载 -->
-    <!-- <div class="progress-container">
-      <p>当前加载的块文件：{{ currentBlockNumber }}</p>
-      <input type="range"
-       ref="blockSlider"
-      :min="cacheStartBlock"
-      :max="cacheEndBlock" 
-      v-model="currentBlockNumber"
-      @input="onBlockNumberChanged" />
-    </div> -->
     <div class="progress-container">
       <input type="range" ref="blockSlider" :min="0" :max="maxBlockNumber" v-model="currentBlockNumber"
         @input="onBlockNumberChanged" />
+      <span>maxBlockNumber:{{ maxBlockNumber }}</span>
     </div>
 
   </div>
@@ -70,6 +59,8 @@ export default {
       currentDataIndex: 0, // 当前块中读取到的数据索引
       blockCache: [], // 缓存前后五个块
       currentBlockNumber: 0, // 当前显示的块号
+      maxBlockNumber: 0, // 最大块号
+      progressPercentage: 0 // 进度百分比
 
       // cacheStartBlock: 0, // 缓存的起始块号
       // cacheEndBlock: 4, // 缓存的结束块号，初始设为5块
@@ -93,8 +84,8 @@ export default {
         return;
       }
       try {
-        console.log(`------${this.filePath}------`);
-        console.log('Sending file for processing:', this.filePath);
+        // console.log(`------${this.filePath}------`);
+        // console.log('Sending file for processing:', this.filePath);
         const result = await window.api.startProcessing(this.filePath);
 
         if (!result || !result.success) {
@@ -102,10 +93,8 @@ export default {
         }
         console.log('文件处理成功');
         this.maxBlockNumber = result.processedData.length - 1;
-        // this.cacheStartBlock=0;
-        // this.cacheEndBlock=Math.min(this.maxBlockNumber,4);
-        // this.currentBlockNumber = this.cacheStartBlock; // 从第一个块号开始
         this.currentBlockNumber = 0;
+        this.updateProgressPercentage();
         this.startAutoRefresh(); // 开启自动刷新
       } catch (error) {
         console.error('解析文件时出错:', error.message);
@@ -121,13 +110,33 @@ export default {
       this.currentDataIndex = 0;
       this.intervalId = setInterval(async () => {
         if (this.currentBlockData.length === 0 || this.currentDataIndex >= this.currentBlockData.length) {
+          // 如果当前块号超出最大块号，停止刷新
+          if (this.currentBlockNumber >= this.maxBlockNumber) {
+            clearInterval(this.intervalId);
+            alert(`自动刷新停止，块号 ${this.currentBlockNumber} 超出最大范围`);
+            return;
+          }
           // 如果当前块数据加载完毕，获取下一个块
           await this.loadAdjacentBlocks();
           this.currentDataIndex = 0; // 重置数据索引
           this.currentBlockNumber += 1; // 更新块号
+          this.updateProgressPercentage();
         }
         this.updateChartWithNextData(); // 更新图表
       }, 1000); // 每秒钟更新
+    },
+
+    // updateProgressPercentage() {
+    //   this.progressPercentage = Math.round((this.currentBlockNumber / this.maxBlockNumber) * 100);
+    // },
+    updateProgressPercentage() {
+      // 确保 currentBlockNumber 是在合法范围内，防止出现负数的情况
+      if (this.currentBlockNumber < 0) {
+        this.currentBlockNumber = 0;
+      }
+
+      // 计算进度百分比，确保始终在 0 到 100% 之间
+      this.progressPercentage = Math.max(0, Math.min(100, Math.round((this.currentBlockNumber / (this.maxBlockNumber - 1)) * 100)));
     },
 
     // 从当前块中提取接下来的30组数据并更新图表
@@ -139,10 +148,6 @@ export default {
 
     // 绘制图表，动态加载数据
     drawChart(dataSlice) {
-      // if(chart){
-      //   chart.dispose(); // 清空之前的图表数据
-      // }
-
       const existingChart = echarts.getInstanceByDom(this.$refs.echartsContainer);
       if (existingChart) {
         existingChart.dispose(); // 销毁之前的图表实例
@@ -232,168 +237,135 @@ export default {
 
     // 根据进度条拖动事件更新当前块号
     async onBlockNumberChanged() {
-      // const relativeIndex = this.currentBlockNumber - this.cacheStartBlock;
-      // if (relativeIndex >= 0 && relativeIndex < this.cacheBlocks.length) {
-      // this.currentBlockNumber = this.blockCache[relativeIndex].blockData;
-      // this.currentDataIndex = 0;
       this.currentBlockNumber = parseInt(this.$refs.blockSlider.value, 10);
       this.loadAdjacentBlocks();
-      // }
+      this.updateProgressPercentage();
     },
 
-    // 加载当前块和相邻的块
+
     async loadAdjacentBlocks(signal) {
-      let isManual =null;
-      if(signal === 1){//通过块号查询
-        isManual =true;
-      }else{//自动加载
-        isManual = false;
+      const isManual = signal === 1 ? true : false;
+
+      // 超出合理范围检测
+      if (this.currentBlockNumber > this.maxBlockNumber) {
+        alert(`块号 ${this.currentBlockNumber} 超出合理范围，请输入1到 ${this.maxBlockNumber} 之间的块号`);
+        clearInterval(this.intervalId); // 停止自动刷新
+        return; // 终止块号加载
       }
+
       const blockData = await this.getBlockData(this.currentBlockNumber, isManual);
       if (blockData) {
         this.currentBlockData = blockData.blockData;
         this.currentDataIndex = 0;
         this.updateChartWithNextData();
+        this.updateProgressPercentage(); // 更新进度百分比
       }
-      this.cacheBlocks(); // 缓存相邻块
+      await this.cacheBlocks(); // 缓存相邻块
     },
-
-
-
 
     async findDataByBlock() {
-      this.currentBlockNumber = parseInt(this.blockInput, 10); // 设置当前块号
-      const signal=1;
+      const blockNumber = parseInt(this.blockInput, 10); // 获取输入的块号
+
+      // 检查块号是否在合理范围
+      if (isNaN(blockNumber) || blockNumber < 0 || blockNumber > this.maxBlockNumber) {
+        alert(`请输入合理的块号（0到${this.maxBlockNumber}之间）`);
+        return;
+      }
+      // 停止自动刷新，确保只播放查找的块
+      clearInterval(this.intervalId);
+      this.isRefreshing = false; 
+
+      this.currentBlockNumber = blockNumber; 
+      const signal = 1;
       await this.loadAdjacentBlocks(signal);
       this.currentDataIndex = 0;
-      this.updateChartWithNextData(); // 开始展示数据
+      // 依次显示该块号中的数据
+      this.intervalId = setInterval(() => {
+        if (this.currentDataIndex < this.currentBlockData.length) {
+          this.updateChartWithNextData(); 
+        } else {
+          clearInterval(this.intervalId); 
+        }
+      }, 1000); // 设置为每秒钟刷新
+
+
+
     },
 
-    // async findDataByBlock() {
-    //   clearInterval(this.intervalId); // 暂停自动刷新
-    //   const blockNumber = parseInt(this.blockInput, 10); // 获取输入的块号
-    //   if (isNaN(blockNumber)) {
-    //     alert("请输入有效的块号");
-    //     return;
-    //   }
-
-    //   // 传递 isManual = true，表示手动查询
-    //   const blockData = await this.getBlockData(blockNumber, true);
-    //   if (blockData) {
-    //     this.currentBlockData = blockData.blockData;
-    //     this.currentDataIndex = 0;
-    //     this.updateChartWithNextData(); // 开始展示数据
-    //     this.startAutoRefresh();
-    //   }
-    // },
-
-
-
-
     async cacheBlocks() {
+      const maxCacheSize = 5; // 最大缓存区大小为5个块
+      const cacheRange = 2;   // 缓存当前块及其后面的两个块
+
       // 确保 currentBlockNumber 在合法范围内
-      if (this.currentBlockNumber < 0 || this.currentBlockNumber >= this.totalBlocks) {
+      if (this.currentBlockNumber < 0 || this.currentBlockNumber > this.maxBlockNumber) {
         console.error('Invalid current block number:', this.currentBlockNumber);
         return;
       }
 
-      const prevBlockNumber = this.currentBlockNumber - 1;
-      const nextBlockNumber = this.currentBlockNumber + 1;
-
-      // 避免下标越界的块号
-      if (prevBlockNumber >= 0) {
-        try {
-          const prevBlock = await this.getBlockData(prevBlockNumber,false);
-          if (prevBlock) {
-            this.blockCache.unshift(prevBlock);
-            console.log(`Cached previous block number: ${prevBlockNumber}`);
+      // 缓存当前块及其后面的两个块
+      for (let i = -2; i <= cacheRange; i++) {
+        const blockNumber = this.currentBlockNumber + i;
+        if (blockNumber >= 0 && blockNumber <= this.maxBlockNumber) {
+          try {
+            const block = await this.getBlockData(blockNumber, false);
+            if (block) {
+              // 确保块数据不重复加入缓存
+              if (!this.blockCache.some(cachedBlock => cachedBlock.blockNumber === blockNumber)) {
+                this.blockCache.push(block);
+                console.log(`Cached block number: ${blockNumber}`);
+              }
+            }
+          } catch (err) {
+            console.error(`Error caching block number: ${blockNumber}`, err);
           }
-        } catch (err) {
-          console.error(`Error caching previous block number: ${prevBlockNumber}`, err);
         }
       }
 
-      if (nextBlockNumber < this.totalBlocks) {
-        try {
-          const nextBlock = await this.getBlockData(nextBlockNumber, false);
-          if (nextBlock) {
-            this.blockCache.push(nextBlock);
-            console.log(`Cached next block number: ${nextBlockNumber}`);
-          }
-        } catch (err) {
-          console.error(`Error caching next block number: ${nextBlockNumber}`, err);
-        }
-      }
+      // 删除缓存中超出当前块前两个块的那些块
+      this.blockCache = this.blockCache.filter(cachedBlock => cachedBlock.blockNumber >= this.currentBlockNumber - 2);
 
-      // 保持缓存区最多5个块文件
-      if (this.blockCache.length > 5) {
+      // 保持缓存区大小不超过5个块
+      while (this.blockCache.length > maxCacheSize) {
         this.blockCache.shift(); // 删除最旧的块
         console.log('Removed the oldest block from cache to maintain 5-block limit.');
       }
 
       // 更新进度条的最小值和最大值，只允许操作缓存区的块
       if (this.blockCache.length > 0) {
-        this.cacheStartBlock = Math.max(0, this.currentBlockNumber - 2); // 确保起始块号不小于0
-        this.cacheEndBlock = Math.min(this.totalBlocks - 1, this.currentBlockNumber + 2); // 确保结束块号不大于总块数
+        this.cacheStartBlock = Math.max(0, this.currentBlockNumber - 2); // 缓存起始块
+        this.cacheEndBlock = Math.min(this.maxBlockNumber, this.currentBlockNumber + cacheRange); // 缓存结束块
         console.log(`Cache range updated: Start = ${this.cacheStartBlock}, End = ${this.cacheEndBlock}`);
       }
 
-      // 限制进度条的范围
+      // 更新进度条的最小值和最大值
       this.$refs.blockSlider.min = this.cacheStartBlock;
       this.$refs.blockSlider.max = this.cacheEndBlock;
     },
 
+
+
     // 从 API 获取块数据
     async getBlockData(blockNumber, isManual) {
-
-      // console.log(`========isManual in getBlockData :${isManual}========`);
-      // console.log(`===this.filePath:${this.filePath}`);
-
       const filePath = this.filePath;
-
-      // console.log(`===filePath:${filePath}`);
-      // console.log(`-----${filePath.length}`);
-
-      // console.log(`filePath 类型: ${typeof filePath}`);
-      // console.log(`filePath 值: ${filePath}`);
-
-      // console.log(`filePath empty check: ${!filePath}`);
-      // console.log(`filePath length check: ${!filePath.length}`);
-
-      // if (!filePath||!filePath.length) {
-        // console.log("进if分支了吗");
-        // if (isManual) {
-        //   {
-        //     alert("请先选择并解析文件");
-        //   }
-        //   return null;  // 终止块号查询
-        // }
-
-        try {
-          const result = await window.api.getBlockData({ blockNumber, filePath });
-
-          // console.log(`===result: ${JSON.stringify(result, null, 2)}`);
-
-          if (result && result.blockData && result.blockData.length > 0) {
-
-            // console.log(`====进来trycatch===`);
-            if (isManual) {
-              alert("块号加载成功");
-            }
-            return result;
-          } else {
-            if (isManual) {
-              alert("块号未找到，加载失败");
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching block data:', error);
+      try {
+        const result = await window.api.getBlockData({ blockNumber, filePath });
+        if (result && result.blockData && result.blockData.length > 0) {
           if (isManual) {
-            alert("查询块号时发生错误，请重试");
+            alert("块号加载成功");
+          }
+          return result;
+        } else {
+          if (isManual) {
+            alert("块号未找到，加载失败");
           }
         }
-        return null;
-      // }
+      } catch (error) {
+        console.error('Error fetching block data:', error);
+        if (isManual) {
+          alert("查询块号时发生错误，请重试");
+        }
+      }
+      return null;
     },
 
     // 如果是通过按钮来查询的，就显示提示信息
@@ -403,8 +375,8 @@ export default {
         alert("请输入有效的块号");
         return;
       }
-
-      this.getBlockData(blockNumber, true);
+      const actualBlockNumber = blockNumber - 1; // 减1是因为块号从0开始
+      this.getBlockData(actualBlockNumber, true);
     },
 
     // 根据时间戳查找块
