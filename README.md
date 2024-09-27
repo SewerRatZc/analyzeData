@@ -113,31 +113,31 @@ $ npm run build:mac
 
 点击想关闭或开启的通道按钮，关闭展示对应的通道曲线
 
-![image-20240927165903702](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20240927165903702.png)
+![image-20240927165903702](picture/image-20240927165903702.png)
 
 4.放大缩小数字电路图像
 
 拖拽缩放尺标，放大看图像
 
-![image(5)](C:\Users\Administrator\Downloads\有道云笔记_files\image(5).png)
+![image(5)](picture/image(5).png)
 
 5.拖拽进度条调整加载到的块文件
 
-![image-20240927170102642](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20240927170102642.png)
+![image-20240927170102642](picture/image-20240927170102642.png)
 
 6.根据时间戳查找数据块
 
 输入要查找的时间戳，展示查找到的时间戳所在的数据块
 
-![image-20240927170145431](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20240927170145431.png)
+![image-20240927170145431](picture/image-20240927170145431.png)
 
 7.根据块号查找文件
 
 在前端输入块号，查找到对应的块文件
 
-![image-20240927170208556](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20240927170208556.png)
+![image-20240927170208556](picture/image-20240927170208556.png)
 
-![image-20240927170248595](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20240927170248595.png)
+![image-20240927170248595](picture/image-20240927170248595.png)
 
 8.展示具体图像内具体信息
 
