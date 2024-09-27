@@ -43,13 +43,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('startProcessing', async (event, filePath) => {
     try {
-      // const fileName = path.basename(filePath,'.txt');
       const fileNameWithExt = filePath.split(/[/\\]/).pop();
       const fileName = fileNameWithExt.replace('.txt', '');
-      console.log(`======${fileName}======`);
+
       const db = setupDatabase(fileName);
       const dirPath = join(__dirname, `../../resources/${fileName}`);
-      // console.log("fileName2:", fileName2);
 
       // 如果文件夹不存在，创建它
       if (!fs.existsSync(dirPath)) {
@@ -65,8 +63,6 @@ app.whenReady().then(() => {
       let startOffset = 0;
       const processedData = [];
 
-      console.log(`Processing file: ${filePath}`);
-
       for await (const line of rl) {
         const parts = line.split(',');
         const timestamp = parseInt(parts[0], 10);
@@ -75,7 +71,6 @@ app.whenReady().then(() => {
 
         if (blockData.length >= 1000) {
           const blockFilePath = join(dirPath, `block_${blockNumber}.txt`);
-          console.log(`Creating block file: ${blockFilePath}`);
           fs.writeFileSync(blockFilePath, blockData.join('\n'), 'utf-8');
           const endOffset = blockData.length;
 
@@ -92,7 +87,6 @@ app.whenReady().then(() => {
 
       if (blockData.length > 0) {
         const blockFilePath = join(dirPath, `block_${blockNumber}.txt`);
-        console.log(`Creating last block file: ${blockFilePath}`);
         fs.writeFileSync(blockFilePath, blockData.join('\n'), 'utf-8');
         const endOffset = blockData.length;
 
@@ -101,8 +95,6 @@ app.whenReady().then(() => {
 
         processedData.push({ blockNumber, blockFilePath, startOffset, endOffset });
       }
-
-      console.log('File processing completed successfully.');
       return { success: true, processedData };
     } catch (error) {
       console.error('Error during file processing:', error);
@@ -114,7 +106,6 @@ app.whenReady().then(() => {
     try {
       const fileNameWithExt = filePath.split(/[/\\]/).pop();
       const fileName = fileNameWithExt.replace('.txt', '');
-      console.log(`======filename in getBlockData:${fileName}======`);
       const db = setupDatabase(fileName);
       const blockStmt = db.prepare('SELECT * FROM data_blocks WHERE block_number = ?');
       const blockInfo = blockStmt.get(blockNumber);
@@ -124,15 +115,6 @@ app.whenReady().then(() => {
         console.error(`Block number ${blockNumber} not found in database.`);
         return null;
       }
-
-      console.log(`==========Reading block file: ${blockInfo.file_path}`);
-
-
-      // const blocks = db.prepare('SELECT * FROM data_blocks');
-      // const allBlocks = blocks.all();
-      // console.log(allBlocks);  // 输出所有的块信息
-
-
 
       // 检查文件是否存在
       if (!fs.existsSync(blockInfo.file_path)) {

@@ -76,7 +76,6 @@ export default {
       this.filePath = file.path; // 获取文件路径
       console.log(`文件路径被选定为: ${this.filePath}`);
     },
-
     // 解析文件
     async processFile() {
       if (!this.filePath) {
@@ -84,8 +83,6 @@ export default {
         return;
       }
       try {
-        // console.log(`------${this.filePath}------`);
-        // console.log('Sending file for processing:', this.filePath);
         const result = await window.api.startProcessing(this.filePath);
 
         if (!result || !result.success) {
@@ -126,13 +123,11 @@ export default {
       }, 1000); // 每秒钟更新
     },
 
-    // updateProgressPercentage() {
-    //   this.progressPercentage = Math.round((this.currentBlockNumber / this.maxBlockNumber) * 100);
-    // },
     updateProgressPercentage() {
-      // 确保 currentBlockNumber 是在合法范围内，防止出现负数的情况
       if (this.currentBlockNumber < 0) {
         this.currentBlockNumber = 0;
+      } else if (this.currentBlockNumber > this.maxBlockNumber) {
+        this.currentBlockNumber = this.maxBlockNumber;
       }
 
       // 计算进度百分比，确保始终在 0 到 100% 之间
@@ -238,8 +233,8 @@ export default {
     // 根据进度条拖动事件更新当前块号
     async onBlockNumberChanged() {
       this.currentBlockNumber = parseInt(this.$refs.blockSlider.value, 10);
-      this.loadAdjacentBlocks();
       this.updateProgressPercentage();
+      await this.loadAdjacentBlocks();
     },
 
 
@@ -273,23 +268,21 @@ export default {
       }
       // 停止自动刷新，确保只播放查找的块
       clearInterval(this.intervalId);
-      this.isRefreshing = false; 
+      this.isRefreshing = false;
 
-      this.currentBlockNumber = blockNumber; 
+      this.currentBlockNumber = blockNumber;
+      this.updateProgressPercentage();
       const signal = 1;
       await this.loadAdjacentBlocks(signal);
       this.currentDataIndex = 0;
       // 依次显示该块号中的数据
       this.intervalId = setInterval(() => {
         if (this.currentDataIndex < this.currentBlockData.length) {
-          this.updateChartWithNextData(); 
+          this.updateChartWithNextData();
         } else {
-          clearInterval(this.intervalId); 
+          clearInterval(this.intervalId);
         }
-      }, 1000); // 设置为每秒钟刷新
-
-
-
+      }, 1000); // 设置为每秒钟刷新一次
     },
 
     async cacheBlocks() {
