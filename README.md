@@ -143,7 +143,7 @@ $ npm run build:mac
 
 监听到鼠标指针聚焦到图像内某点上时，展示该时间戳每个通道电频详细信息
 
-![image-20240927170313503](analyzeData1/picture/image-20240927170313503.png)
+![image-20240927170313503](analyzeData1\picture\image-20240927170313503.png)
 
 
 
